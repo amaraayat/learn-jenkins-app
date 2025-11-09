@@ -1,48 +1,56 @@
 pipeline {
     agent any
     environment {
-    NETLIFY_SITE_ID = 'aa54a34d-26e8-42f6-99d2-b21a49c3d19d'
-    NETLIFY_AUTH_TOKEN = credentials('netlify-token')
-
-}
-
+        NETLIFY_SITE_ID = 'aa54a34d-26e8-42f6-99d2-b21a49c3d19d'
+        NETLIFY_AUTH_TOKEN = credentials('netlify-token')
+    }
 
     stages {
 
         stage('Deploy') {
             agent {
                 docker {
-                    image 'node:18-alpine'
-                    reuseNode true
-                }
-            }
-            steps {
-    sh '''
-    npm install netlify-cli
-    node_modules/.bin/netlify --version
-    echo "Deploying to production. SITE_ID: $NETLIFY_SITE_ID"
-    node_modules/.bin/netlify status
-    node_modules/.bin/netlify deploy --dir=build --prod
-
-
-
-
-    '''
-}
-
-        }
-
-        stage('test') {
-            agent {
-                docker {
-                    image 'node:18-alpine'
+                    // Utiliser une image node avec bash (non alpine)
+                    image 'node:18' 
                     reuseNode true
                 }
             }
             steps {
                 sh '''
-                test -f build/index.html
-                npm test
+                    # Installer netlify-cli
+                    npm install netlify-cli
+
+                    # Vérifier la version de netlify-cli
+                    node_modules/.bin/netlify --version
+
+                    echo "Deploying to production. SITE_ID: $NETLIFY_SITE_ID"
+
+                    # Afficher le status netlify
+                    node_modules/.bin/netlify status
+
+                    # Lancer le build localement (vérifier que package.json contient "build" script)
+                    npm run build
+
+                    # Déployer le dossier build
+                    node_modules/.bin/netlify deploy --dir=build --prod
+                '''
+            }
+        }
+
+        stage('test') {
+            agent {
+                docker {
+                    image 'node:18'
+                    reuseNode true
+                }
+            }
+            steps {
+                sh '''
+                    # Vérifier que le fichier index.html existe
+                    test -f build/index.html
+
+                    # Lancer les tests (npm test doit être configuré)
+                    npm test
                 '''
             }
         }
@@ -56,10 +64,14 @@ pipeline {
             }
             steps {
                 sh '''
-                npm install serve
-                node_modules/.bin/serve -s build &
-                sleep 10
-                npx playwright test --reporter=html
+                    npm install serve
+                    node_modules/.bin/serve -s build &
+
+                    # Attendre que le serveur démarre
+                    sleep 10
+
+                    # Lancer les tests e2e Playwright
+                    npx playwright test --reporter=html
                 '''
             }
         }
@@ -67,6 +79,7 @@ pipeline {
 
     post {
         always {
+            // Attention au chemin des rapports junit, adapter si besoin
             junit 'test-results/junit.xml'
         }
     }
